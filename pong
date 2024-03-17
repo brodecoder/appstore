@@ -1,0 +1,171 @@
+from machine import Pin, I2C
+from ssd1306 import SSD1306_I2C
+import urandom
+
+# Function to clear the screen and draw a border
+def clear_screen():
+    oled.fill(0)
+    oled.rect(0, 0, WIDTH, HEIGHT, 1)
+
+# Function to display a startup screen
+def startup_screen():
+    clear_screen()
+    oled.text("Game Starting", 20, 20)
+    oled.text("Press a Button", 10, 40)
+    oled.show()
+    while True:
+        if any([button.value() == 0 for button in [left_button, right_button, up_button, down_button, b_button]]):
+            clear_screen()
+            oled.show()
+            break
+
+# Function to draw a character
+def draw_character(x, y):
+    oled.fill_rect(x, y, 8, 8, 1)
+
+# Function to draw a dot
+def draw_dot(dot_x, dot_y):
+    oled.fill_rect(int(dot_x), int(dot_y), dot_size, dot_size, 1)
+
+# Function to draw hearts as lives
+def draw_lives(lives):
+    for i in range(lives):
+        oled.fill_rect(WIDTH - 8 - i * 10, 0, 8, 8, 1)
+
+# Function to shoot a bullet
+def shoot_bullet():
+    bullets.append([char_x + 3, char_y + 8])  # Create a bullet at the character's position
+
+# Initialize I2C using pins GP14 & GP15
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+
+# Initialize OLED display
+WIDTH = 128  # OLED display width in pixels
+HEIGHT = 64  # OLED display height in pixels
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+# Initialize button pins
+left_button = Pin(4, Pin.IN, Pin.PULL_UP)
+right_button = Pin(5, Pin.IN, Pin.PULL_UP)
+up_button = Pin(2, Pin.IN, Pin.PULL_UP)
+down_button = Pin(3, Pin.IN, Pin.PULL_UP)
+b_button = Pin(6, Pin.IN, Pin.PULL_UP)
+
+# Run the startup screen function
+startup_screen()
+
+# Character variables
+char_x = 60  # character's x coordinate
+char_y = 30  # character's y coordinate
+char_speed = 2  # character's movement speed
+char_width = 8
+char_height = 8
+
+# Dots variables
+dots = []  # List to store active dots
+dot_speed = 0.5  # Dot movement speed
+dot_size = 2  # Dot size
+
+# Player lives and score
+lives = 3  # Initial number of lives
+score = 0  # Initial score
+
+# Bullets
+bullets = []  # List to store active bullets
+bullet_speed = 3  # Bullet movement speed
+shoot_enabled = True  # Toggle for allowing shooting
+rect_width = 35
+rect_height = 15
+rect_x = (WIDTH - rect_width) // 2  # Centering the rectangle
+
+# Level variable and dot initial speed
+level = 1
+dot_speed = 0.5  # Initial dot movement speed
+
+# Main game loop
+while lives > 0:  # Continue the game until lives run out
+    # Clear the screen and draw border
+    clear_screen()
+    
+    # Draw lives and score
+    draw_lives(lives)
+    oled.text("Score", 1, 1)
+    oled.text("{}".format(score), 16, 10)
+    
+    # Draw the character
+    draw_character(char_x, char_y)
+    
+    oled.fill_rect(rect_x, 0, rect_width, rect_height, 1)
+    
+    # Draw level number at the bottom left
+    oled.text("Level: {}".format(level), 1, HEIGHT - 8)
+    
+    # Move the character based on button presses
+    if left_button.value() == 0 and char_x > 0:
+        char_x -= char_speed
+    elif right_button.value() == 0 and char_x < WIDTH - char_width:
+        char_x += char_speed
+    
+    if up_button.value() == 0 and char_y > 0:
+        char_y -= char_speed
+    elif down_button.value() == 0 and char_y < HEIGHT - char_height:
+        char_y += char_speed
+    
+    # Shoot bullets when 'B' button is pressed and shooting is enabled
+    if b_button.value() == 0 and shoot_enabled:
+        shoot_bullet()
+        shoot_enabled = False  # Disable shooting until the button is released
+    
+    # Check button state to re-enable shooting
+    if b_button.value() == 1:
+        shoot_enabled = True
+    
+    # Move and draw all active bullets
+    for bullet in bullets[:]:  # Using [:] to create a copy of the list
+        draw_dot(bullet[0], bullet[1])
+        bullet[1] -= bullet_speed  # Move the bullet upwards
+        
+        # Remove bullet when it reaches the top border
+        if bullet[1] <= 0:
+            bullets.remove(bullet)
+    
+    # Check for collisions between bullets and the big rectangle
+    for bullet in bullets[:]:
+        if rect_x <= bullet[0] <= rect_x + rect_width and bullet[1] <= rect_height:
+            bullets.remove(bullet)  # Remove bullet when it hits the rectangle
+            score += 10  # Increase score when the rectangle is hit
+    
+    # Check for collisions between character and dots
+    for dot in dots[:]:
+        if (char_x <= dot[0] <= char_x + char_width and
+            char_y <= dot[1] <= char_y + char_height):
+            dots.remove(dot)  # Remove dot when it hits the character
+            lives -= 1  # Reduce a life when hit by a dot
+    
+    # Update dot spawn based on the level's speed
+    dots.append([urandom.getrandbits(10), HEIGHT - dot_size])  # Bottom side
+    
+    # Move and draw all active dots
+    for dot in dots[:]:  # Using [:] to create a copy of the list
+        draw_dot(dot[0], dot[1])  # Draw dot
+        dot[1] -= dot_speed  # Move dots upwards
+        
+        # Remove dot when it collides with the top border
+        if dot[1] <= 0:
+            dots.remove(dot)
+    
+    # Check if score reaches the next level
+    if score >= 1000 * level:
+        level += 1  # Increase level
+        lives = 3  # Reset lives
+
+        dot_speed += 0.2  # Increase dot speed for next level
+    
+    # Update the display
+    oled.show()
+
+# Game Over
+clear_screen()
+oled.invert(1)
+oled.text("Game Over!", 20, 20)
+oled.show()
