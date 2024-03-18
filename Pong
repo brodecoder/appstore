@@ -1,0 +1,186 @@
+from machine import Pin, I2C, PWM
+from ssd1306 import SSD1306_I2C
+import time
+import urandom
+
+# Passive piezo buzzer connected to pin GP18
+buzzer = PWM(Pin(18))
+
+# Function to produce a single beep sound
+def beep():
+    buzzer.duty_u16(16384)  # 16384 = 25% duty cycle
+    buzzer.freq(1000)  # Set a frequency for the beep sound
+    time.sleep(0.05)  # Adjust the duration of the beep
+    buzzer.duty_u16(0)  # Turn off the buzzer
+
+# Function to produce a double beep sound
+def double_beep():
+    beep()
+    time.sleep(0.05)  # Adjust the gap between beeps
+    beep()
+
+# Init I2C using pins GP14 & GP15
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+
+# Init oled display
+WIDTH = 128  # oled display width in pixels
+HEIGHT = 64  # oled display height in pixels
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+oled.text("Starting Up...", 15, 30)  # Display "Game Over" message
+oled.show()
+time.sleep(5)
+
+
+# Left and right push buttons connected to GP4 and GP5
+left = Pin(4, Pin.IN, Pin.PULL_UP)
+right = Pin(5, Pin.IN, Pin.PULL_UP)
+
+# coordinates of the paddle on the screen in pixels
+# the screen is 128 pixels wide by 64 pixel high
+xp = 60
+yp = 60
+
+# Ball variables
+x = 64  # ball coordinates on the screen in pixels
+y = 0
+vx = 2  # ball velocity along x and y in pixels per frame
+vy = 2
+
+# Initialize scores and lives for the player
+score = 0
+lives = 3  # Initial number of lives
+
+# Initialize falling block ('H' shape)
+block_shape = [
+    [1, 0, 1],
+    [1, 1, 1],
+    [1, 0, 1]
+]
+block_height = len(block_shape)
+block_width = len(block_shape[0])
+
+# Initialize falling block position
+block_x = urandom.getrandbits(7)  # Randomize block's x position within screen width
+block_y = 0
+block_speed = 1  # Adjust the falling speed
+
+# Add these lines at the beginning of your code, before the game loop starts
+inverted_display = False  # Variable to track the display inversion
+increment_value = 10  # Increase score by 10 points
+
+def draw_hearts(lives):
+    for i in range(lives):
+        # Draw heart symbol at the top right corner
+        oled.fill_rect(120 - (i * 10), 0, 8, 8, 1)
+        oled.fill_rect(120 - (i * 10) + 1, 1, 6, 6, 1)
+        oled.fill_rect(120 - (i * 10) + 2, 2, 4, 4, 1)
+        oled.fill_rect(120 - (i * 10) + 3, 3, 2, 2, 1)
+
+def draw_block(block_x, block_y):
+    for i in range(block_height):
+        for j in range(block_width):
+            if block_shape[i][j] == 1:
+                oled.fill_rect(block_x + j * 4, block_y + i * 4, 4, 4, 1)
+
+while True:
+
+    # clear the screen
+    oled.fill(0)
+
+    # ... (previous code)
+
+    
+    # Draw lives as heart symbols
+    draw_hearts(min(lives, 5))  # Limit lives to a maximum of 5
+
+    # draw a 16x4 pixels paddle at coordinates (xp,yp)
+    oled.fill_rect(xp, yp, 16, 4, 1)
+    
+    # Draw a 4x4 pixels ball at (x,y) in white
+    oled.fill_rect(x, y, 4, 4, 1)
+    
+    # Draw falling block ('H' shape)
+    draw_block(block_x, block_y)
+    
+    # Display the score on the OLED screen
+    oled.text("Score: {}".format(score), 0, 0)
+    
+    # Draw lives as heart symbols
+    draw_hearts(min(lives, 5))  # Limit lives to a maximum of 5
+    
+    if score % 100 == 0 and score != 0:  # Invert the display every 100 points
+        if not inverted_display:
+            oled.invert(True)  # Invert display
+            inverted_display = True
+    else:
+        if inverted_display:
+            oled.invert(False)  # Reset display inversion
+            inverted_display = False
+    
+    oled.show()
+
+    if left.value() == 0:
+        print("LEFT Button Pressed")
+        xp = max(xp - 2, 0)  # Move the paddle to the left by 2 pixels, ensuring it doesn't go off the screen
+    elif right.value() == 0:
+        print("RIGHT Button Pressed")
+        xp = min(xp + 2, 128 - 16)  # Move the paddle to the right by 2 pixels, ensuring it doesn't go off the screen
+
+    time.sleep(0.001)
+    
+    # Move the ball by adding the velocity vector
+    x += vx
+    y += vy
+    
+    # Move the falling block downward
+    block_y += block_speed
+    
+    # Make the ball rebound on the edges of the screen
+    if x < 0:
+        x = 0
+        vx = -vx
+    elif x + 4 > 128:
+        x = 128 - 4
+        vx = -vx
+    
+    if y < 0:
+        y = 0
+        vy = -vy
+    elif y + 4 > 64:
+        # Ball hits the bottom of the screen
+        y = 64 - 4
+        vy = -vy
+        # Decrement lives when the ball hits the bottom
+        lives -= 1
+    
+    # Check collision with paddle
+    if y + 4 >= yp and x + 4 >= xp and x <= xp + 16:
+        y = yp - 4
+        vy = -vy
+        # Increase the score when the ball hits the paddle
+        score += increment_value  # Increase score by 10 points
+        beep()  # Play a beep sound when the ball hits the paddle
+    
+    # Check collision with falling block ('H' shape)
+    for i in range(block_height):
+        for j in range(block_width):
+            if block_shape[i][j] == 1 and block_y + i * 4 + 4 >= yp and block_x + j * 4 + 4 >= xp and block_x + j * 4 <= xp + 16:
+                lives += 1  # Increment lives when the block hits the paddle
+                block_x = urandom.getrandbits(7)  # Reset block's x position
+                block_y = 0  # Reset block's y position
+                double_beep()  # Play a double beep sound when the 'H' block hits the paddle
+    if lives == 0:
+        # Game over logic (You can add further actions here)
+        print("Game Over")
+        oled.text("Game Over", 30, 30)  # Display "Game Over" message
+        oled.show()
+        time.sleep(5)  # Display the game over screen for 5 seconds
+        lives = 3  # Reset lives to initial value
+        score = 0  # Reset score to 0
+        x = 64  # Reset ball coordinates
+        y = 0
+        block_x = urandom.getrandbits(7)  # Reset falling block's x position
+        block_y = 0  # Reset falling block's y position
+        continue  # Restart the game loop            
+    
