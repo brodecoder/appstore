@@ -1,0 +1,28 @@
+from machine import Pin, I2C
+from ssd1306 import SSD1306_I2C
+import uos
+
+# Init I2C using pins GP14 & GP15
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+
+# Init OLED display
+WIDTH = 128  # OLED display width in pixels
+HEIGHT = 64  # OLED display height in pixels
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+# Function to clear the screen and display text
+def display_text(text):
+    oled.fill(0)
+    oled.text(text, 0, 0)
+    oled.show()
+
+# Get the amount of free space in bytes
+free_space = uos.statvfs("/")[0] * uos.statvfs("/")[3]
+
+# Convert bytes to kilobytes and megabytes for better readability
+free_space_kb = free_space / 1024
+free_space_mb = free_space_kb / 1024
+
+# Display the amount of free space
+display_text("Free space:")
+display_text("{:.2f} MB".format(free_space_mb))
