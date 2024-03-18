@@ -1,0 +1,106 @@
+from machine import Pin, I2C
+from ssd1306 import SSD1306_I2C
+import urandom
+import time
+
+# Initialize I2C using pins GP14 & GP15
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+
+# Initialize OLED display
+WIDTH = 128
+HEIGHT = 64
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+# Define game variables
+CELL_SIZE = 4
+GRID_WIDTH = WIDTH // CELL_SIZE
+GRID_HEIGHT = HEIGHT // CELL_SIZE
+SNAKE_INIT_LENGTH = 3
+snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]  # Initial snake position
+food = (urandom.randint(0, GRID_WIDTH - 1), urandom.randint(0, GRID_HEIGHT - 1))  # Initial food position
+direction = (1, 0)  # Initial movement direction (right)
+score = 0
+
+def draw_pixel(x, y, color=1):
+    oled.fill_rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, color)
+
+def draw_snake():
+    for segment in snake:
+        draw_pixel(*segment)
+
+def draw_food():
+    draw_pixel(*food)
+
+def move_snake():
+    global direction, food, score
+
+    # Calculate new head position
+    head = (snake[0][0] + direction[0], snake[0][1] + direction[1])
+
+    # Check for collision with walls or snake body
+    if (
+        head[0] < 0 or head[0] >= GRID_WIDTH or
+        head[1] < 0 or head[1] >= GRID_HEIGHT or
+        head in snake
+    ):
+        game_over()
+        return
+
+    # Move snake
+    snake.insert(0, head)
+
+    # Check for collision with food
+    if head == food:
+        score += 1
+        generate_food()
+    else:
+        snake.pop()
+
+def generate_food():
+    global food
+    while True:
+        food = (urandom.randint(0, GRID_WIDTH - 1), urandom.randint(0, GRID_HEIGHT - 1))
+        if food not in snake:
+            break
+
+def game_over():
+    oled.fill(0)
+    oled.text("Game Over", 25, 25)
+    oled.text("Score: {}".format(score), 25, 40)
+    oled.show()
+    time.sleep(3)
+    reset_game()
+
+def reset_game():
+    global snake, food, direction, score
+    snake = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
+    direction = (1, 0)
+    score = 0
+    generate_food()
+
+def handle_input():
+    global direction
+    if left.value() == 0 and direction != (1, 0):
+        direction = (-1, 0)
+    elif right.value() == 0 and direction != (-1, 0):
+        direction = (1, 0)
+    elif up.value() == 0 and direction != (0, 1):
+        direction = (0, -1)
+    elif down.value() == 0 and direction != (0, -1):
+        direction = (0, 1)
+
+# Main game loop
+left = Pin(4, Pin.IN, Pin.PULL_UP)
+right = Pin(5, Pin.IN, Pin.PULL_UP)
+up = Pin(2, Pin.IN, Pin.PULL_UP)
+down = Pin(3, Pin.IN, Pin.PULL_UP)
+
+while True:
+    oled.fill(0)
+    handle_input()
+    move_snake()
+    draw_food()
+    draw_snake()
+    oled.text("Score: {}".format(score), 0, 0)
+    oled.show()
+    time.sleep(0.1)
