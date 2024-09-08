@@ -1,0 +1,235 @@
+import random
+import utime
+from machine import Pin, I2C, PWM
+from ssd1306 import SSD1306_I2C
+import time
+
+# OLED display setup
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+WIDTH = 128
+HEIGHT = 64
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+# Button setup (D-pad + B button)
+up_button = Pin(4, Pin.IN, Pin.PULL_UP)
+down_button = Pin(5, Pin.IN, Pin.PULL_UP)
+b_button = Pin(6, Pin.IN, Pin.PULL_UP)
+
+# Game variables
+player_hp = 30
+max_hp = 30
+enemy_hp = 15
+potions = 1
+coins = 0
+current_event = ""
+highlighted_option = 0  # 0 = Go, 1 = Act, 2 = Item
+has_enemy = False  # Flag to track if there is an enemy available
+shop_price = 0  # Variable to store the current shop price
+
+speaker_pin = Pin(18, Pin.OUT)
+speaker_pwm = PWM(speaker_pin)
+
+# Function to play a tone
+def play_tone(frequency, duration):
+    speaker_pwm.freq(frequency)  # Set frequency of the tone
+    speaker_pwm.duty_u16(20000)  # Set duty cycle to 50%
+    time.sleep(duration)         # Play the tone for the duration
+    speaker_pwm.duty_u16(0)      # Stop the tone
+
+# Function to clear the screen
+def clear_screen():
+    oled.fill(0)
+
+# Function to display text on the screen (16 char limit)
+def display_text(text, extra_line=""):
+    clear_screen()
+    oled.text(text[:16], 0, 0)
+    oled.text(f"HP:{player_hp} $:{coins}", 0, 40)
+    oled.text(f"Elix:{potions}", 80, 40)
+
+    if extra_line:
+        oled.text(extra_line[:16], 0, 10)
+
+    # Highlight the selected option
+    if highlighted_option == 0:
+        oled.text("> Go", 0, 50)
+    else:
+        oled.text("  Go", 0, 50)
+    
+    if highlighted_option == 1:
+        oled.text("> Act", 40, 50)
+    else:
+        oled.text("  Act", 40, 50)
+
+    if highlighted_option == 2:
+        oled.text("> Item", 80, 50)
+    else:
+        oled.text("  Item", 80, 50)
+
+    oled.show()
+
+# Function to explore ("Go" option) with event rarities
+def go_explore():
+    global current_event, shop_price, has_enemy
+
+    # Define event probabilities
+    events = [
+        ("An enemy appears", 0.3),  # Common
+        ("Found a shop!", 0.3),  # Common
+        ("Plains", 0.3),  # Common
+        ("Forest", 0.3),  # Common
+        ("Ruins", 0.3),  # Common
+        ("Ancient Shrine", 0.2),  # Uncommon
+        ("Enchanted Grove", 0.1),  # Rare
+        ("Cursed Battlefield", 0.1)  # Rare
+    ]
+
+    # Calculate total weight
+    total_weight = sum(weight for _, weight in events)
+    rand = random.uniform(0, total_weight)
+    cumulative = 0
+
+    # Select event based on weight
+    for event, weight in events:
+        cumulative += weight
+        if rand < cumulative:
+            current_event = event
+            if event == "An enemy appears":
+                has_enemy = True  # Set flag to true if an enemy is found
+                enemy_hp = 15  # Reset enemy HP for a new encounter
+            elif event == "Found a shop!":
+                shop_price = random.randint(2, 4)  # Determine shop price
+            break
+
+    # Display shop price only if the event is a shop
+    if current_event == "Found a shop!":
+        display_text(current_event, f"Price: ${shop_price}")
+    else:
+        display_text(current_event)
+
+# Function to act ("Act" option)
+def act():
+    global player_hp, enemy_hp, potions, coins, max_hp, has_enemy, shop_price
+
+    if current_event == "An enemy appears":
+        if not has_enemy:
+            display_text("No enemies left!")
+            play_tone(100, 0.1)
+            utime.sleep(0.1)
+            play_tone(100, 0.1)
+            return
+        
+        enemy_hp -= 5
+        oled.invert(1)
+        play_tone(550, 0.2)
+        play_tone(500, 0.2)
+        utime.sleep(0.1)
+        oled.invert(0)
+        utime.sleep(0.1)
+        oled.invert(1)
+        utime.sleep(0.1)
+        oled.invert(0)
+        
+        player_hp -= 3
+        if enemy_hp <= 0:
+            coins += random.randint(1, 5)
+            has_enemy = False  # Mark enemy as defeated
+            display_text("Enemy defeated!")
+            enemy_hp = 15  # Reset enemy HP for next battle
+        elif player_hp <= 0:
+            display_text("You died.")
+            utime.sleep(2)
+            game_over()
+        else:
+            display_text(f"Enemy HP:{enemy_hp}")
+
+    elif current_event == "Found a shop!":
+        if coins >= shop_price:
+            potions = min(potions + 1, 9)
+            coins -= shop_price
+            display_text("Bought Elixir")
+        else:
+            display_text("Not enough coins!")
+        utime.sleep(2)  # Delay to show the message before the next action
+
+    elif current_event in ["Plains", "Forest", "Ruins"]:
+        display_text("Nothing here.")
+        play_tone(180, 0.1)
+        utime.sleep(0.1)
+        play_tone(180, 0.1)
+        
+
+    elif current_event == "Ancient Shrine":
+        player_hp = min(player_hp + 15, max_hp)
+        display_text("Blessed!")
+
+    elif current_event == "Enchanted Grove":
+        if random.random() < 0.65:
+            damage = random.randint(5, 10)
+            player_hp = max(player_hp - damage, 0)
+            display_text(f"Damaged by {damage}!")
+        else:
+            max_hp += 10
+            player_hp = min(player_hp, max_hp)
+            display_text("Max HP increased!")
+
+    elif current_event == "Cursed Battlefield":
+        display_text("Battlefield cursed!")
+        # Implement any additional logic here
+
+# Function to use an item ("Item" option)
+def use_item():
+    global player_hp, potions
+
+    if potions > 0:
+        player_hp = min(player_hp + 5, max_hp)
+        potions -= 1
+        display_text("Used Elixir!")
+    else:
+        display_text("No Elixirs left!")
+
+# Function to handle game over
+def game_over():
+    global player_hp, max_hp, coins, potions, has_enemy
+    display_text("Game Over!")
+    utime.sleep(5)  # Show game over message for 5 seconds
+    player_hp = 30
+    max_hp = 30
+    enemy_hp = 15
+    potions = 1
+    coins = 0
+    has_enemy = False  # Reset flag to no enemy
+    display_text("Restarting...")
+    utime.sleep(2)
+    go_explore()  # Start new game loop
+
+# Main game loop
+def game_loop():
+    global highlighted_option
+
+    display_text("Welcome!")
+    while True:
+        # Handle navigation using D-pad
+        if up_button.value() == 0:
+            highlighted_option = (highlighted_option - 1) % 3  # Navigate up
+            display_text(current_event)
+            utime.sleep(0.2)
+        elif down_button.value() == 0:
+            highlighted_option = (highlighted_option + 1) % 3  # Navigate down
+            display_text(current_event)
+            utime.sleep(0.2)
+
+        # Handle selection using B button
+        if b_button.value() == 0:
+            if highlighted_option == 0:
+                go_explore()
+            elif highlighted_option == 1:
+                act()
+            elif highlighted_option == 2:
+                use_item()
+            if player_hp <= 0:
+                game_over()
+            utime.sleep(0.5)
+
+# Start the game
+game_loop()
