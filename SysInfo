@@ -61,11 +61,11 @@ cpu_speed = get_cpu_speed() / 1000000  # Convert Hz to MHz
 
 # Display the information
 text_lines = [
-    "Storage Used: {:.2f} MB".format(used_space_mb),
-    "Storage Free: {:.2f} MB".format(free_space_mb),
-    "RAM Used: {:.2f} MB".format(used_memory_mb),
-    "RAM Free: {:.2f} MB".format(free_memory_mb),
-    "CPU Speed: {:.2f} MHz".format(cpu_speed)
+    "Used: {:.2f} MB".format(used_space_mb),
+    "Free: {:.2f} MB".format(free_space_mb),
+    "RUsed: {:.2f} MB".format(used_memory_mb),
+    "RFree: {:.2f} MB".format(free_memory_mb),
+    "CPU: {:.2f} MHz".format(cpu_speed)
 ]
 
 display_text(text_lines)
