@@ -1,0 +1,71 @@
+from machine import Pin, I2C, freq
+from ssd1306 import SSD1306_I2C
+import uos
+import gc
+
+# Init I2C using pins GP14 & GP15
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400000)
+
+# Init OLED display
+WIDTH = 128  # OLED display width in pixels
+HEIGHT = 64  # OLED display height in pixels
+oled = SSD1306_I2C(WIDTH, HEIGHT, i2c)
+
+# Function to clear the screen and display text
+def display_text(text_lines):
+    oled.fill(0)
+    for i, line in enumerate(text_lines):
+        oled.text(line, 0, i * 10)
+    oled.show()
+
+# Storage Information
+def get_storage_info():
+    stat = uos.statvfs("/")
+    total_space = stat[0] * stat[3]  # Total space in bytes
+    free_space = stat[0] * stat[3] - stat[1] * stat[3]  # Free space in bytes
+    return total_space, free_space
+
+# Memory Information
+def get_memory_info():
+    mem_info = gc.mem_alloc(), gc.mem_free()
+    return mem_info[0], mem_info[1]  # Allocated and free memory in bytes
+
+# CPU Speed Information
+def get_cpu_speed():
+    return freq()  # Returns CPU frequency in Hz
+
+# Retrieve and format the information
+total_space, free_space = get_storage_info()
+used_space = total_space - free_space
+
+total_space_kb = total_space / 1024
+free_space_kb = free_space / 1024
+used_space_kb = used_space / 1024
+
+total_space_mb = total_space_kb / 1024
+free_space_mb = free_space_kb / 1024
+used_space_mb = used_space_kb / 1024
+
+used_memory, free_memory = get_memory_info()
+total_memory = used_memory + free_memory
+
+used_memory_kb = used_memory / 1024
+free_memory_kb = free_memory / 1024
+total_memory_kb = total_memory / 1024
+
+used_memory_mb = used_memory_kb / 1024
+free_memory_mb = free_memory_kb / 1024
+total_memory_mb = total_memory_kb / 1024
+
+cpu_speed = get_cpu_speed() / 1000000  # Convert Hz to MHz
+
+# Display the information
+text_lines = [
+    "Storage Used: {:.2f} MB".format(used_space_mb),
+    "Storage Free: {:.2f} MB".format(free_space_mb),
+    "RAM Used: {:.2f} MB".format(used_memory_mb),
+    "RAM Free: {:.2f} MB".format(free_memory_mb),
+    "CPU Speed: {:.2f} MHz".format(cpu_speed)
+]
+
+display_text(text_lines)
